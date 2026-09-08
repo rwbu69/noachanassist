@@ -28,7 +28,7 @@ Then she's fun to talk to I mean she's not perfect, she sometimes acts dumb, som
 
 ---
 
-### ✨ Her Capabilities 
+### Her Capabilities 
 
 and she could do stuffs ! Like actually useful stuffs:
 - **Chat & Interactions:** A clean desktop app with notifications and system tray support.
@@ -45,7 +45,7 @@ and she could do stuffs ! Like actually useful stuffs:
 
 ---
 
-### 💻 The nerdy stuffs (Libraries & Tech) ヾ(・ω・)ノ
+### The nerdy stuffs (Libraries & Tech) ヾ(・ω・)ノ
 
 In case you're wondering what makes her tick, here's the magic behind the scenes:
 
@@ -66,7 +66,7 @@ In case you're wondering what makes her tick, here's the magic behind the scenes
 
 ---
 
-### 📖 Setup Tutorial 
+### Setup Tutorial 
 
 If you're interested to try, you can clone the repo and... well you'll need an API key as well, I used openrouter's. Here's a tutorial for it ヽ(・∀・)ﾉ : 
 
