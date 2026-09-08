@@ -4,6 +4,9 @@ import { loadSettings, saveSettings, saveMemory } from '../memory/memory.js';
 import { state } from '../core/state.js';
 import { sendToFrontend } from '../system/server.js';
 
+// NOTE: Slash commands intentionally bypass the standard model-tool approval flow.
+// This is by design, because slash commands represent explicit, trusted instructions 
+// manually typed by the user, whereas autonomous LLM actions require approval for safety.
 const COMMAND_REGISTRY = {
     '/clear': async (ws, args) => {
         if (ws) ws.send(JSON.stringify({ type: 'clear' }));
@@ -42,15 +45,15 @@ const COMMAND_REGISTRY = {
     },
     '/proactive': async (ws, args) => {
         const toggle = args[0]?.toLowerCase();
-        const currentSettings = loadSettings();
+        const currentSettings = await loadSettings();
         if (toggle === 'on') {
             currentSettings.proactiveMode = true;
-            saveSettings(currentSettings);
+            await saveSettings(currentSettings);
             state.updateLastInteraction();
             sendToFrontend(ws, 'system', 'Proactive mode enabled. I will check in on you occasionally.');
         } else if (toggle === 'off') {
             currentSettings.proactiveMode = false;
-            saveSettings(currentSettings);
+            await saveSettings(currentSettings);
             sendToFrontend(ws, 'system', 'Proactive mode disabled.');
         } else {
             sendToFrontend(ws, 'system', `Proactive mode is currently ${currentSettings.proactiveMode !== false ? 'ON' : 'OFF'}. Use "/proactive on" or "/proactive off" to toggle.`);

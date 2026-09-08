@@ -29,7 +29,7 @@ export function startDiaryCron() {
 }
 
 export async function writeNightlyDiary() {
-  const memory = loadMemory();
+  const memory = await loadMemory();
   if (memory.length < 4) {
     // Not enough interaction today to warrant a diary entry
     return;

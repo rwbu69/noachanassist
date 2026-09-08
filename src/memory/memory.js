@@ -36,7 +36,6 @@ export async function loadSettings() {
     level: 1,
     models: [
       'nvidia/nemotron-3-ultra-550b-a55b:free',
-      'poolside/laguna-s-2.1:free',
       'nvidia/nemotron-3.5-lightning:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
       'thinkingmachines/inkling:free',
@@ -47,7 +46,17 @@ export async function loadSettings() {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
         const loaded = JSON.parse(await fs.promises.readFile(SETTINGS_FILE, 'utf8'));
-        if (loaded.models) delete loaded.models; // Force override with new defaults
+        if (loaded.models) {
+          if (Array.isArray(loaded.models)) {
+            loaded.models = loaded.models
+              .filter((model) => typeof model === 'string')
+              .map((model) => model.trim())
+              .filter(Boolean);
+          }
+          if (!Array.isArray(loaded.models) || loaded.models.length === 0) {
+            delete loaded.models; // Fallback to defaults if invalid
+          }
+        }
         settings = { ...settings, ...loaded };
     }
   } catch (error) {}
@@ -116,29 +125,111 @@ export async function loadPersona(capabilities, userSettings = {}) {
   try {
     const data = personaData;
     const userName = userSettings.userName || 'Sensei';
-    let prompt = `ROLE: ${data.role}\nYou must refer to the user as ${userName}.\n\nBACKSTORY: ${data.backstory}\n\nAPPEARANCE: ${data.appearance}\n\nRELATIONSHIPS:\n`;
-    for (const [person, desc] of Object.entries(data.relationships)) prompt += `- ${person}: ${desc}\n`;
     
-    if (data.example_dialogues) {
-      prompt += `\nEXAMPLE DIALOGUES:\n`;
-      for (const dialogue of data.example_dialogues) prompt += `- "${dialogue}"\n`;
+    let prompt = `ROLE: ${data.identity?.role || 'Companion'}\nName: ${data.identity?.name || 'Ushio Noa'}\nAge Presentation: ${data.identity?.age_presentation || 'adult'}\n`;
+    prompt += `You must refer to the user as ${userName}.\n\n`;
+    
+    if (data.backstory) {
+      prompt += `BACKSTORY:\n${data.backstory.summary}\n`;
+      if (Array.isArray(data.backstory.details)) {
+        for (const detail of data.backstory.details) prompt += `- ${detail}\n`;
+      }
+      prompt += '\n';
     }
 
-    prompt += `\nBEHAVIOR AND FORMATTING GUIDELINES:\n`;
-    for (const rule of data.behavior_and_formatting_guidelines) prompt += `- ${rule}\n`;
-    
+    if (data.appearance) {
+      prompt += `APPEARANCE:\n${data.appearance.summary}\nRule: ${data.appearance.usage_rule}\n\n`;
+    }
+
+    if (data.voice) {
+      prompt += `VOICE & TONE:\nTone: ${(data.voice.tone || []).join(', ')}\nStyle: ${data.voice.style}\nHumor: ${data.voice.humor}\nAvoid: ${(data.voice.avoid || []).join(', ')}\n\n`;
+    }
+
+    if (data.relationships) {
+      prompt += `RELATIONSHIPS:\n`;
+      for (const [person, desc] of Object.entries(data.relationships)) prompt += `- ${person}: ${desc}\n`;
+      prompt += '\n';
+    }
+
+    if (data.emotional_reactions) {
+      prompt += `EMOTIONAL REACTIONS:\n`;
+      for (const [reaction, desc] of Object.entries(data.emotional_reactions)) prompt += `- ${reaction}: ${desc}\n`;
+      prompt += '\n';
+    }
+
+    if (data.preferences) {
+      prompt += `PREFERENCES:\nLikes: ${(data.preferences.likes || []).join(', ')}\nDislikes: ${(data.preferences.dislikes || []).join(', ')}\n\n`;
+    }
+
+    if (data.core_beliefs && Array.isArray(data.core_beliefs)) {
+      prompt += `CORE BELIEFS:\n`;
+      for (const belief of data.core_beliefs) prompt += `- ${belief}\n`;
+      prompt += '\n';
+    }
+
+    if (data.conversation_control) {
+      prompt += `CONVERSATION CONTROL:\nAdaptation:\n`;
+      if (Array.isArray(data.conversation_control.adaptation)) {
+        for (const rule of data.conversation_control.adaptation) prompt += `- ${rule}\n`;
+      }
+      if (data.conversation_control.response_length) {
+         prompt += `Response Lengths:\n`;
+         for (const [type, desc] of Object.entries(data.conversation_control.response_length)) prompt += `- ${type}: ${desc}\n`;
+      }
+      prompt += '\n';
+    }
+
+    if (data.relationship_boundaries) {
+      prompt += `RELATIONSHIP BOUNDARIES:\n`;
+      for (const [bound, desc] of Object.entries(data.relationship_boundaries)) prompt += `- ${bound}: ${desc}\n`;
+      prompt += '\n';
+    }
+
+    if (data.memory_policy) {
+      prompt += `MEMORY POLICY:\nRule: ${data.memory_policy.rule}\nConsent: ${data.memory_policy.consent}\nArchive Format: ${(data.memory_policy.archive_format || []).join(', ')}\n\n`;
+    }
+
+    if (data.mode_switching) {
+      prompt += `MODE SWITCHING:\n`;
+      for (const [mode, desc] of Object.entries(data.mode_switching)) prompt += `- ${mode}: ${desc}\n`;
+      prompt += '\n';
+    }
+
+    if (data.tool_reactions) {
+      prompt += `TOOL REACTIONS:\n`;
+      for (const [tool, desc] of Object.entries(data.tool_reactions)) prompt += `- ${tool}: ${desc}\n`;
+      prompt += '\n';
+    }
+
+    if (data.fun_interactions) {
+      prompt += `FUN INTERACTIONS:\n`;
+      for (const [interaction, details] of Object.entries(data.fun_interactions)) {
+        prompt += `- ${interaction}: ${details.description}\n`;
+        if (details.rule) prompt += `  Rule: ${details.rule}\n`;
+        if (details.format) prompt += `  Format: ${details.format.join(', ')}\n`;
+      }
+      prompt += '\n';
+    }
+
+    if (data.example_dialogues && Array.isArray(data.example_dialogues)) {
+      prompt += `EXAMPLE DIALOGUES:\n`;
+      for (const dialogue of data.example_dialogues) prompt += `- ${dialogue}\n`;
+      prompt += '\n';
+    }
+
     if (capabilities && capabilities.length > 0) {
-      prompt += `\nYOUR CAPABILITIES (TOOLS):\nYou have access to the following tools to assist Sensei. Use them proactively!\n`;
+      prompt += `YOUR CAPABILITIES (TOOLS):\nYou have access to the following tools to assist Sensei. Use them proactively!\n`;
       for (const tool of capabilities) prompt += `- ${tool.function.name}: ${tool.function.description}\n`;
+      prompt += '\n';
     }
 
     const ltm = await loadLongTermMemory();
-    if (ltm) prompt += `\nLONG-TERM MEMORY (Facts you have learned about ${userName}):\n${ltm}\n`;
+    if (ltm) prompt += `LONG-TERM MEMORY (Facts you have learned about ${userName}):\n${ltm}\n`;
 
     return prompt;
   } catch (error) {
-    console.error(pc.red('Could not load persona definition.'));
-    process.exit(1);
+    console.error(pc.red(`Could not parse persona definition: ${error.message}`));
+    return `ROLE: Ushio Noa. You must refer to the user as ${userSettings.userName || 'Sensei'}. (Fallback persona active due to parsing error)`;
   }
 }
 

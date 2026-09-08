@@ -16,6 +16,15 @@ import { state } from "./state.js";
 import { sendToFrontend, pendingApprovals } from "../system/server.js";
 import { handleCommand } from "../tools/commands.js";
 
+export const activeRequests = new Map();
+
+export function cancelActiveRequest(requestId) {
+    if (activeRequests.has(requestId)) {
+        activeRequests.get(requestId).abort();
+        activeRequests.delete(requestId);
+    }
+}
+
 // SRP: Helper to build the system prompt context
 async function buildSystemPrompt(userSettings, capabilities, ws) {
   let activePersona =
@@ -84,7 +93,25 @@ async function handleToolCall(toolCall, ws, capabilities, memory) {
 
     const approved = await new Promise((resolve) => {
       pendingApprovals.set(toolCall.id, resolve);
+      setTimeout(() => {
+        if (pendingApprovals.has(toolCall.id)) {
+            pendingApprovals.delete(toolCall.id);
+            resolve("TIMEOUT");
+        }
+      }, 60000);
     });
+
+    if (approved === "TIMEOUT" || approved === "DISCONNECTED") {
+        return {
+          role: "tool",
+          tool_call_id: toolCall.id,
+          name: functionName,
+          content: JSON.stringify({
+            success: false,
+            error: `Approval failed: ${approved === "TIMEOUT" ? "User did not respond within 60 seconds." : "Client disconnected before approval."}`
+          }),
+        };
+    }
 
     if (!approved) {
       return {
@@ -181,7 +208,7 @@ async function enforceContextLimits(memory, maxTokens) {
 }
 
 // Main Orchestrator Loop
-export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
+export async function handleUserInput(userInput, ws, isSystemTrigger = false, requestId = null) {
   if (typeof userInput === "string") {
     userInput = userInput.trim();
     if (!userInput) return;
@@ -189,32 +216,40 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
     if (userInput.startsWith("/")) {
       const [cmd, ...args] = userInput.split(" ");
       const handled = await handleCommand(cmd.toLowerCase(), args);
-      if (handled) return;
+      if (handled) {
+          if (requestId) sendToFrontend(ws, "request_cancelled", { requestId });
+          return;
+      } else {
+          sendToFrontend(ws, "system", { content: "Unknown command. Type /help to see available commands.", requestId });
+          if (requestId) sendToFrontend(ws, "request_cancelled", { requestId });
+          return;
+      }
     }
   }
 
-  sendToFrontend(ws, "system", "Noa-chan is thinking...");
+  const controller = new AbortController();
+  if (requestId) {
+      activeRequests.set(requestId, controller);
+  }
 
   let lastDownloadMsg = 0;
+  let hasSentLoading = false;
+  
   const progressCallback = (info) => {
     if (info.status === "init" || info.status === "download") {
-      sendToFrontend(
-        ws,
-        "system",
-        `Loading AI Brain: Downloading ${info.file || "weights"}...`,
-      );
+      if (!hasSentLoading) {
+        sendToFrontend(ws, "system", "Loading AI Brain...");
+        hasSentLoading = true;
+      }
+      console.log(pc.dim(`[ Vector Engine ] Downloading ${info.file || "weights"}...`));
     } else if (info.status === "progress") {
       const now = Date.now();
       if (now - lastDownloadMsg > 1500) {
-        sendToFrontend(
-          ws,
-          "system",
-          `Downloading Vector Engine: ${info.file} - ${Math.round(info.progress)}%`,
-        );
+        console.log(pc.dim(`[ Vector Engine ] Downloading ${info.file} - ${Math.round(info.progress)}%`));
         lastDownloadMsg = now;
       }
     } else if (info.status === "done") {
-      sendToFrontend(ws, "system", `Vector Engine initialized successfully.`);
+      console.log(pc.dim(`[ Vector Engine ] Initialized ${info.file || 'model'} successfully.`));
     }
   };
 
@@ -236,6 +271,14 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
     console.log(pc.red(`Vector memory error: ${e.message}`));
   }
 
+  if (controller.signal.aborted) {
+      if (requestId) sendToFrontend(ws, "request_cancelled", { requestId });
+      if (requestId) activeRequests.delete(requestId);
+      memory.pop();
+      state.setMemory(memory);
+      return;
+  }
+
   const capabilities = state.getCapabilities();
   let activePersona = await buildSystemPrompt(userSettings, capabilities, ws);
 
@@ -255,6 +298,14 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
     }
   } catch (e) {
     console.log(pc.red(`Vector memory query error: ${e.message}`));
+  }
+
+  if (controller.signal.aborted) {
+      if (requestId) sendToFrontend(ws, "request_cancelled", { requestId });
+      if (requestId) activeRequests.delete(requestId);
+      memory.pop();
+      state.setMemory(memory);
+      return;
   }
 
   let networkRetries = 0;
@@ -279,11 +330,20 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
     try {
       let messages = [{ role: "system", content: activePersona }, ...memory];
       const models = userSettings.models || ["openrouter/free"];
+      
+      sendToFrontend(ws, "system", "Noa-chan is thinking...");
+
+      if (controller.signal.aborted) throw new Error("USER_CANCELLED");
+      
       const response = await callAPIWithFallback(
         messages,
         capabilities,
         models,
+        {
+           abortSignal: controller.signal
+        }
       );
+      
       const responseMessage = response.choices[0].message;
 
       if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
@@ -291,12 +351,15 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
         memory.push(responseMessage);
 
         for (const toolCall of responseMessage.tool_calls) {
+          if (controller.signal.aborted) throw new Error("USER_CANCELLED");
           const toolResult = await handleToolCall(
             toolCall,
             ws,
             capabilities,
             memory,
           );
+          if (controller.signal.aborted) throw new Error("USER_CANCELLED");
+          
           if (Array.isArray(toolResult)) {
             memory.push(...toolResult);
           } else {
@@ -316,43 +379,41 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
           .replace(/<invoke>[\s\S]*?<\/invoke>/g, "")
           .trim();
 
-        sendToFrontend(ws, "noa", reply);
+        if (controller.signal.aborted) throw new Error("USER_CANCELLED");
+
+        sendToFrontend(ws, "noa", { content: reply, requestId });
+        
         memory.push({ role: "assistant", content: reply });
 
         await saveMemory(memory);
         state.setMemory(memory);
         await saveVectorMemory(reply, "assistant");
+        
+        if (requestId) activeRequests.delete(requestId);
         break;
       }
     } catch (error) {
+      console.error(pc.red(`[Debug] Orchestrator Loop Error:`), error);
+      if (requestId) activeRequests.delete(requestId);
+      if (controller.signal.aborted && error.message !== "USER_CANCELLED") {
+        if (requestId) sendToFrontend(ws, "request_cancelled", { requestId });
+        memory.pop();
+        state.setMemory(memory);
+        break;
+      }
       if (error.message === "CONTEXT_LIMIT") {
         memory = await summarizeAndArchive(memory);
         state.setMemory(memory);
         continue;
       }
-      if (error.message === "NETWORK_DISCONNECT") {
-        networkRetries++;
-        if (networkRetries <= 3) {
-          console.log(
-            pc.yellow(
-              `[ System ] Network error. Retrying... (${networkRetries}/3)`,
-            ),
-          );
-          sendToFrontend(
-            ws,
-            "system",
-            `Network connection failed. Retrying... (${networkRetries}/3)`,
-          );
-          await new Promise((res) => setTimeout(res, 5000));
-          continue;
-        } else {
-          sendToFrontend(ws, "noa", "It seems that Noa isn't here today.");
-          memory.pop();
-          state.setMemory(memory);
-          break;
-        }
+      if (error.message === "USER_CANCELLED") {
+        if (requestId) sendToFrontend(ws, "request_cancelled", { requestId });
+        memory.pop();
+        state.setMemory(memory);
+        break;
       }
-      sendToFrontend(ws, "system", `Error: ${error.message}`);
+      
+      sendToFrontend(ws, "noa", { content: "I'm having trouble reaching my thoughts right now, Sensei. Shall I try again?", requestId });
       memory.pop();
       state.setMemory(memory);
       break;

@@ -13,7 +13,7 @@
                 if ($terminalLogs === 'Waiting for backend connection...\n') {
                     terminalLogs.set('');
                 }
-                const cleanText = event.payload.replace(/\r?\n$/, '');
+                const cleanText = event.payload.replace(/\x1b\[[0-9;]*m/g, '').replace(/\r?\n$/, '');
                 terminalLogs.update(logs => logs + cleanText + '\n');
             });
         }

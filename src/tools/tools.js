@@ -123,7 +123,8 @@ export function send_notification({ title, message }) {
     title: title || 'Seminar Secretary Noa', 
     message: message, 
     sound: true,
-    icon: path.join(process.cwd(), 'icon', 'noa.png')
+    icon: path.join(process.cwd(), 'icon', 'noa.png'),
+    appID: 'Noa-chan'
   });
   return `Notification successfully sent to Sensei's desktop: [${title}] ${message}`;
 }
@@ -266,14 +267,14 @@ export function read_todos() {
   return todos.map((t, i) => `${i+1}. [${t.completed ? 'x' : ' '}] ${t.task} (ID: ${t.id})`).join('\n');
 }
 
-export function complete_todo({ id }) {
+export async function complete_todo({ id }) {
   const todos = loadTodos();
   const todo = todos.find(t => t.id === id);
   if (!todo) return `Todo with ID ${id} not found.`;
   todo.completed = true;
   saveTodos(todos);
   
-  const settings = loadSettings();
+  const settings = await loadSettings();
   settings.exp += 50;
   const levelUpThreshold = settings.level * 100;
   
@@ -283,7 +284,7 @@ export function complete_todo({ id }) {
       settings.exp = 0;
       eventText = `[SYSTEM EVENT: Sensei gained 50 EXP and LEVELED UP to Level ${settings.level}! Congratulate them enthusiastically on their hard work!]`;
   }
-  saveSettings(settings);
+  await saveSettings(settings);
   toolEvents.emit('sync_todos');
   
   return `Marked task as completed: "${todo.task}". ${eventText}`;
@@ -393,28 +394,4 @@ export function start_rps_game() {
   return "Game initiated! The UI has been updated to wait for Sensei's choice. Do not reply yet until Sensei makes a choice.";
 }
 
-export async function git_manager({ action, message }) {
-    if (action === 'status') {
-        return await execute_command({ command: 'git status' });
-    } else if (action === 'commit') {
-        await execute_command({ command: 'git add .' });
-        return await execute_command({ command: `git commit -m "${message}"` });
-    }
-    return "Invalid action";
-}
-
-export async function run_sandbox_code({ language, code }) {
-    const sandboxDir = path.join(getDataDir(), 'sandbox');
-    if (!fs.existsSync(sandboxDir)) fs.mkdirSync(sandboxDir, { recursive: true });
-    
-    if (language === 'javascript') {
-        const file = path.join(sandboxDir, 'temp.js');
-        fs.writeFileSync(file, code);
-        return await execute_command({ command: `node "${file}"` });
-    } else if (language === 'python') {
-        const file = path.join(sandboxDir, 'temp.py');
-        fs.writeFileSync(file, code);
-        return await execute_command({ command: `python "${file}"` });
-    }
-    return "Unsupported language. Use 'javascript' or 'python'.";
-}
+// End of file

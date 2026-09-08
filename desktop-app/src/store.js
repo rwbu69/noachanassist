@@ -14,6 +14,9 @@ export const coreMemories = writable("");
 export const terminalLogs = writable("Waiting for backend connection...\n");
 export const isRpsMode = writable(false);
 
+export const isGenerating = writable(false);
+export const activeRequestId = writable(null);
+
 const getBool = (key, defaultVal) => {
     const v = localStorage.getItem(key);
     return v === null ? defaultVal : v === 'true';
@@ -57,9 +60,29 @@ export function addMessage(role, content) {
 }
 
 const WS_HANDLERS = {
+    'request_cancelled': (data) => {
+        let currentId;
+        activeRequestId.subscribe(id => currentId = id)();
+        if (data.requestId && currentId !== data.requestId) return;
+        isGenerating.set(false);
+        activeRequestId.set(null);
+    },
     'message': async (data) => {
+        const isAssistantMessage = data.role === 'noa' || data.role === 'assistant';
+        if (isAssistantMessage && data.requestId) {
+            let currentId;
+            activeRequestId.subscribe(id => currentId = id)();
+
+            // A cancelled request may finish after the UI has already moved on.
+            // Never display its stale response or let it alter a newer request.
+            if (currentId !== data.requestId) return;
+
+            isGenerating.set(false);
+            activeRequestId.set(null);
+        }
+
         addMessage(data.role, data.content);
-        if (data.role === 'noa' || data.role === 'assistant') {
+        if (isAssistantMessage) {
             triggerNotification("Noa sent you a message");
         }
     },
@@ -159,9 +182,7 @@ export async function connectWebSocket() {
         
         settings.subscribe(s => {
             if (wsInstance && wsInstance.readyState === WebSocket.OPEN && !hasSentSettings) {
-                const isFirstTime = !localStorage.getItem('noa_apiKey');
-                const type = isFirstTime ? 'init_settings' : 'settings';
-                wsInstance.send(JSON.stringify({ type, ...s }));
+                wsInstance.send(JSON.stringify({ type: 'init', ...s }));
                 hasSentSettings = true;
             }
         })();

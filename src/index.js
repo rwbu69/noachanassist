@@ -7,7 +7,7 @@ import { startDiaryCron } from './system/diary.js';
 import { state } from './core/state.js';
 import { startServer } from './system/server.js';
 import { handleUserInput } from './core/orchestrator.js';
-import { get_active_window, toolEvents } from './tools/tools.js';
+import { get_active_window, toolEvents, capture_screen } from './tools/tools.js';
 
 const noaDir = getDataDir();
 if (!fs.existsSync(noaDir)) {
@@ -51,7 +51,7 @@ setInterval(async () => {
     
     const { loadSettings } = await import('./memory/memory.js');
     const settings = await loadSettings();
-    if (settings.proactiveMode === false) return;
+    if (settings.proactiveMode === false || String(settings.proactiveMode).toLowerCase() === 'false') return;
     
     const interval = settings.proactiveInterval || 5;
     const idleMinutes = (Date.now() - state.lastInteractionTime) / (1000 * 60);
@@ -100,7 +100,7 @@ setInterval(async () => {
     if (!currentWs || !state.getIsWatching()) return;
     
     try {
-        const screenshotResult = await tools.capture_screen();
+        const screenshotResult = await capture_screen();
         if (typeof screenshotResult === 'string' && screenshotResult.includes('__is_image')) {
             const imgData = JSON.parse(screenshotResult);
             const watchPrompt = [

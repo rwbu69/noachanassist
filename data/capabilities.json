@@ -152,7 +152,7 @@
     "type": "function",
     "function": {
       "name": "run_sandbox_code",
-      "description": "Write and execute a temporary python or javascript script in a secure sandbox to figure out complex math, logic, or formatting BEFORE replying to the user.",
+      "description": "Write and execute a temporary python or javascript script in a local directory to figure out complex math, logic, or formatting BEFORE replying to the user.",
       "approval_required": true,
       "parameters": {
         "type": "object",
