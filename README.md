@@ -4,6 +4,9 @@
 
 Yes so basically I like this character and well... I always wanted to make a personal kinda assistant who I could talk to when I'm bored. That's why I made her. 
 
+She's from Blue Archive btw. If you wanna play the game you could click this link ! (・∀・)
+[Blue Archive on Steam](https://store.steampowered.com/app/3557620/Blue_Archive/)
+
 So yeah I made this with the help of AI of course (Yeah I know making an AI thingy with the help of AI is funny but there's that). 
 
 But yeah there's that and here are some screenshots about her (・∀・)
@@ -14,11 +17,17 @@ But yeah there's that and here are some screenshots about her (・∀・)
 Then she's fun to talk to I mean she's not perfect, she sometimes acts dumb, sometimes she doesnt know what she's doing but yeah she's pretty fun to talk to. (≧◡≦)
 
 and she could do stuffs ! Like actually useful stuffs:
-- Chat with you through a clean desktop app 
-- Remember things from past conversations (she has her own vector memory and long-term brain)
-- Randomly reach out and check on you if you've been idle for a while (Proactive mode!)
-- Run system tools, manage files, and see what active window you're on right now
-- Automatically fallback to other free AI models if her main brain goes down 
+- **Chat & Interactions:** A clean desktop app with notifications and system tray support.
+- **Persistent Memory:** She has her own vector memory and long-term brain, plus a core memory to save your preferences and hobbies.
+- **Proactive Check-ins:** Randomly reaches out if you've been idle for a while (Proactive mode!).
+- **Window & Screen Tracking:** She can read what your active window is, and even take screenshots of your desktop!
+- **System Tools:** Execute PowerShell commands, manage git repositories, analyze directories, and check your CPU/RAM health.
+- **File Management:** She can read and write local files directly on your computer.
+- **Web & Media:** Perform DuckDuckGo web searches, scrape website contents, and even control YouTube to play music or videos for you.
+- **Todo List & Timers:** A built-in task manager with due dates, plus you can ask her to set timers to remind you of things.
+- **Sandbox Coding:** She can write and securely run Python and JavaScript code inside a sandbox to solve math or analyze data.
+- **Fun Stuffs:** Generate massive ASCII art in the terminal, check the local weather, or just play Rock Paper Scissors with you!
+- **Model Fallbacks:** Automatically fallbacks to other free OpenRouter models if her main brain goes down.
 
 If you're interested to try, you can clone the repo and... well you'll need an API key as well, I used openrouter's. 
 
