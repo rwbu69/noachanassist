@@ -11,8 +11,10 @@ So yeah I made this with the help of AI of course (Yeah I know making an AI thin
 
 But yeah there's that and here are some screenshots about her (・∀・)
 
-![Splash Screen](assets/git-images/splashscreen.png)
-![Example Chat](assets/git-images/example1.png)
+<p align="center">
+  <img src="assets/git-images/splashscreen.png" width="45%" alt="Splash Screen" />
+  <img src="assets/git-images/example1.png" width="45%" alt="Example Chat" />
+</p>
 
 Then she's fun to talk to I mean she's not perfect, she sometimes acts dumb, sometimes she doesnt know what she's doing but yeah she's pretty fun to talk to. (≧◡≦)
 
@@ -30,6 +32,15 @@ and she could do stuffs ! Like actually useful stuffs:
 - **Model Fallbacks:** Automatically fallbacks to other free OpenRouter models if her main brain goes down.
 
 If you're interested to try, you can clone the repo and... well you'll need an API key as well, I used openrouter's. 
+
+### The nerdy stuffs (Libraries & Tech) ヾ(・ω・)ノ
+In case you're wondering what makes her tick, here's the magic behind the scenes:
+- **Tauri & Svelte:** Makes her desktop app super snappy, lightweight, and pretty.
+- **Bun:** Used for the backend because we gotta go fast!
+- **SQLite (better-sqlite3):** Her local vector memory and long-term brain storage.
+- **Orama:** A super fast search engine so she remembers what you said weeks ago.
+- **Cheerio & DuckDuckGo Scrape:** So she can actually read the internet when you ask her to look stuffs up!
+- **OpenRouter API:** Connects her to all the big smart AI models.
 
 Here's a tutorial for it ヽ(・∀・)ﾉ : 
 
