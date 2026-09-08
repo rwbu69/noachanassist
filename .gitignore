@@ -1,0 +1,12 @@
+node_modules/
+.env
+memory.json
+vector_memory.json
+long_term_memory.txt
+diary/
+scratch/
+desktop-app/src-tauri/target/
+desktop-app/node_modules/
+desktop-app/dist/
+desktop-app/backup-dist/
+test-backend.exe

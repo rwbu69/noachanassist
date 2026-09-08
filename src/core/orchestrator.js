@@ -1,0 +1,361 @@
+import pc from "picocolors";
+import {
+  loadPersona,
+  getCircadianMood,
+  saveMemory,
+  summarizeAndArchive,
+  loadSettings,
+} from "../memory/memory.js";
+import { callAPIWithFallback } from "./api.js";
+import {
+  saveVectorMemory,
+  queryVectorMemory,
+} from "../memory/vector_memory.js";
+import * as tools from "../tools/tools.js";
+import { state } from "./state.js";
+import { sendToFrontend, pendingApprovals } from "../system/server.js";
+import { handleCommand } from "../tools/commands.js";
+
+// SRP: Helper to build the system prompt context
+async function buildSystemPrompt(userSettings, capabilities, ws) {
+  let activePersona =
+    (await loadPersona(capabilities, userSettings)) +
+    `\n\n${getCircadianMood()}`;
+
+  const now = new Date();
+  const dateString = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const timeString = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const currentTodos = tools.read_todos();
+
+  let weatherStr = "Weather context not available (City not set in settings).";
+  if (userSettings.city) {
+    weatherStr = await tools
+      .executeWithTimeout(tools.get_weather({ city: userSettings.city }), 5000)
+      .catch(() => "Weather API unavailable");
+  }
+
+  const dailyBriefing = `\n\n[SYSTEM EVENT - CURRENT CONTEXT]\nCurrent Date: ${dateString}\nCurrent Time: ${timeString}\nCurrent Weather in ${userSettings.city || "Unknown"}: ${weatherStr}\nPending Tasks:\n${currentTodos}`;
+  activePersona += dailyBriefing;
+
+  const activeGame = state.getActiveGame();
+  if (activeGame) {
+    activePersona += `\n\n[SYSTEM OVERRIDE - ACTIVE GAME MODE: ${activeGame.toUpperCase()}]\nYou are currently playing a game of ${activeGame} with Sensei. Act as the Game Master/Host for this game. Keep track of the game rules, points, and turns! Treat this as a fun, highly interactive session.`;
+  }
+
+  return activePersona;
+}
+
+// SRP: Helper to manage human-in-the-loop tool approvals
+async function handleToolCall(toolCall, ws, capabilities, memory) {
+  const functionName = toolCall.function.name;
+  sendToFrontend(ws, "tool", `Executing: ${functionName}...`);
+
+  let functionArgs;
+  try {
+    functionArgs = JSON.parse(toolCall.function.arguments || "{}");
+  } catch (jsonErr) {
+    console.log(pc.red(`Tool JSON Error for ${functionName}.`));
+    return {
+      role: "tool",
+      tool_call_id: toolCall.id,
+      name: functionName,
+      content: JSON.stringify({
+        success: false,
+        error: `JSON Parse Error: ${jsonErr.message}. Please fix your JSON arguments.`,
+      }),
+    };
+  }
+
+  const toolDef = capabilities.find((c) => c.function.name === functionName);
+  if (toolDef && toolDef.function.approval_required) {
+    sendToFrontend(ws, "approval_request", {
+      id: toolCall.id,
+      tool: functionName,
+      args: functionArgs,
+    });
+
+    const approved = await new Promise((resolve) => {
+      pendingApprovals.set(toolCall.id, resolve);
+    });
+
+    if (!approved) {
+      return {
+        role: "tool",
+        tool_call_id: toolCall.id,
+        name: functionName,
+        content: JSON.stringify({
+          success: false,
+          error: "User explicitly denied permission to execute this tool.",
+        }),
+      };
+    }
+  }
+
+  let functionResult = "";
+  if (tools[functionName]) {
+    const timeoutMs = tools.TOOL_CONFIG?.[functionName]?.timeout || 60000;
+    try {
+      functionResult = await tools.executeWithTimeout(
+        Promise.resolve(tools[functionName](functionArgs)),
+        timeoutMs,
+      );
+    } catch (e) {
+      functionResult = JSON.stringify({
+        success: false,
+        error: e.message || "Unknown tool execution error",
+      });
+    }
+  } else {
+    functionResult = JSON.stringify({
+      success: false,
+      error: `Tool ${functionName} does not exist.`,
+    });
+  }
+
+  // Special handling for screen capture to format as vision input
+  if (
+    typeof functionResult === "string" &&
+    functionResult.includes("__is_image")
+  ) {
+    try {
+      const imgData = JSON.parse(functionResult);
+      functionResult =
+        "Screen captured successfully. See the user message below for the image.";
+      // Since this returns multiple messages (tool output + vision input), we return an array
+      return [
+        {
+          role: "tool",
+          tool_call_id: toolCall.id,
+          name: functionName,
+          content: functionResult,
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Here is the screenshot you requested:" },
+            { type: "image_url", image_url: { url: imgData.base64 } },
+          ],
+        },
+      ];
+    } catch (e) {}
+  }
+
+  return {
+    role: "tool",
+    tool_call_id: toolCall.id,
+    name: functionName,
+    content:
+      typeof functionResult === "string"
+        ? functionResult
+        : JSON.stringify(functionResult),
+  };
+}
+
+// SRP: Helper to enforce memory character limits (replacing js-tiktoken)
+async function enforceContextLimits(memory, maxTokens) {
+  const charsPerToken = 4;
+  const maxChars = maxTokens * charsPerToken;
+  let totalChars = memory.reduce(
+    (sum, m) =>
+      sum +
+      (typeof m.content === "string"
+        ? m.content.length
+        : JSON.stringify(m.content).length),
+    0,
+  );
+
+  if (totalChars > maxChars) {
+    const summarized = await summarizeAndArchive(memory);
+    state.setMemory(summarized);
+    return summarized;
+  }
+  return memory;
+}
+
+// Main Orchestrator Loop
+export async function handleUserInput(userInput, ws, isSystemTrigger = false) {
+  if (typeof userInput === "string") {
+    userInput = userInput.trim();
+    if (!userInput) return;
+
+    if (userInput.startsWith("/")) {
+      const [cmd, ...args] = userInput.split(" ");
+      const handled = await handleCommand(cmd.toLowerCase(), args);
+      if (handled) return;
+    }
+  }
+
+  sendToFrontend(ws, "system", "Noa-chan is thinking...");
+
+  let lastDownloadMsg = 0;
+  const progressCallback = (info) => {
+    if (info.status === "init" || info.status === "download") {
+      sendToFrontend(
+        ws,
+        "system",
+        `Loading AI Brain: Downloading ${info.file || "weights"}...`,
+      );
+    } else if (info.status === "progress") {
+      const now = Date.now();
+      if (now - lastDownloadMsg > 1500) {
+        sendToFrontend(
+          ws,
+          "system",
+          `Downloading Vector Engine: ${info.file} - ${Math.round(info.progress)}%`,
+        );
+        lastDownloadMsg = now;
+      }
+    } else if (info.status === "done") {
+      sendToFrontend(ws, "system", `Vector Engine initialized successfully.`);
+    }
+  };
+
+  let memory = state.getMemory();
+  memory.push({ role: "user", content: userInput });
+
+  const userSettings = await loadSettings();
+  memory = await enforceContextLimits(
+    memory,
+    userSettings.maxContextTokens || 8000,
+  );
+  state.setMemory(memory); // Sync immediately so user sees input in memory if debugged
+
+  try {
+    const textToSave =
+      typeof userInput === "string" ? userInput : "[Image sent to Noa]";
+    await saveVectorMemory(textToSave, "user", progressCallback);
+  } catch (e) {
+    console.log(pc.red(`Vector memory error: ${e.message}`));
+  }
+
+  const capabilities = state.getCapabilities();
+  let activePersona = await buildSystemPrompt(userSettings, capabilities, ws);
+
+  try {
+    const queryText =
+      typeof userInput === "string" ? userInput : "What do you see?";
+    const relevantMemories = await queryVectorMemory(
+      queryText,
+      3,
+      progressCallback,
+    );
+    if (relevantMemories.length > 0) {
+      const memoryText = relevantMemories
+        .map((m) => `[${m.timestamp}] ${m.role}: ${m.text}`)
+        .join("\n");
+      activePersona += `\n\n[RELEVANT PAST MEMORIES]\n${memoryText}`;
+    }
+  } catch (e) {
+    console.log(pc.red(`Vector memory query error: ${e.message}`));
+  }
+
+  let networkRetries = 0;
+  let iterations = 0;
+
+  while (true) {
+    if (iterations++ > 5) {
+      sendToFrontend(
+        ws,
+        "system",
+        "Tool execution aborted due to excessive recursive errors.",
+      );
+      memory.push({
+        role: "assistant",
+        content:
+          "I got stuck in a loop while thinking. Please try asking again.",
+      });
+      state.setMemory(memory);
+      break;
+    }
+
+    try {
+      let messages = [{ role: "system", content: activePersona }, ...memory];
+      const models = userSettings.models || ["openrouter/free"];
+      const response = await callAPIWithFallback(
+        messages,
+        capabilities,
+        models,
+      );
+      const responseMessage = response.choices[0].message;
+
+      if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+        sendToFrontend(ws, "system", "Noa-chan is checking her tools...");
+        memory.push(responseMessage);
+
+        for (const toolCall of responseMessage.tool_calls) {
+          const toolResult = await handleToolCall(
+            toolCall,
+            ws,
+            capabilities,
+            memory,
+          );
+          if (Array.isArray(toolResult)) {
+            memory.push(...toolResult);
+          } else {
+            memory.push(toolResult);
+          }
+        }
+
+        state.setMemory(memory);
+        continue; // Loop again so LLM processes the tool result
+      } else {
+        let reply = responseMessage.content
+          .replace(
+            /\]<\]minimax\[>\[[\s\S]*?(?:\]|<\/tool_call>|<\/invoke>)/g,
+            "",
+          )
+          .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
+          .replace(/<invoke>[\s\S]*?<\/invoke>/g, "")
+          .trim();
+
+        sendToFrontend(ws, "noa", reply);
+        memory.push({ role: "assistant", content: reply });
+
+        await saveMemory(memory);
+        state.setMemory(memory);
+        await saveVectorMemory(reply, "assistant");
+        break;
+      }
+    } catch (error) {
+      if (error.message === "CONTEXT_LIMIT") {
+        memory = await summarizeAndArchive(memory);
+        state.setMemory(memory);
+        continue;
+      }
+      if (error.message === "NETWORK_DISCONNECT") {
+        networkRetries++;
+        if (networkRetries <= 3) {
+          console.log(
+            pc.yellow(
+              `[ System ] Network error. Retrying... (${networkRetries}/3)`,
+            ),
+          );
+          sendToFrontend(
+            ws,
+            "system",
+            `Network connection failed. Retrying... (${networkRetries}/3)`,
+          );
+          await new Promise((res) => setTimeout(res, 5000));
+          continue;
+        } else {
+          sendToFrontend(ws, "noa", "It seems that Noa isn't here today.");
+          memory.pop();
+          state.setMemory(memory);
+          break;
+        }
+      }
+      sendToFrontend(ws, "system", `Error: ${error.message}`);
+      memory.pop();
+      state.setMemory(memory);
+      break;
+    }
+  }
+}

@@ -1,0 +1,268 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_system_time",
+      "description": "Get the current local date and time of the user's system.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a specific city.",
+      "parameters": {
+        "type": "object",
+        "properties": { "city": { "type": "string" } },
+        "required": ["city"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "control_media",
+      "description": "Open YouTube and search for a specific video or song to play.",
+      "parameters": {
+        "type": "object",
+        "properties": { "query": { "type": "string" } },
+        "required": ["query"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "read_file",
+      "description": "Read the contents of a local file on the user's computer.",
+      "parameters": {
+        "type": "object",
+        "properties": { "filepath": { "type": "string", "description": "Absolute or relative path." } },
+        "required": ["filepath"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "write_file",
+      "description": "Create or overwrite a file with specific content.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "filepath": { "type": "string" },
+          "content": { "type": "string" }
+        },
+        "required": ["filepath", "content"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "execute_command",
+      "description": "Run a powershell/terminal command on the user's computer.",
+      "approval_required": true,
+      "parameters": {
+        "type": "object",
+        "properties": { 
+          "command": { "type": "string" },
+          "cwd": { "type": "string", "description": "Optional working directory" }
+        },
+        "required": ["command"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "generate_ascii_art",
+      "description": "Draw massive ASCII art in the terminal for the user. Use this when asked to draw something.",
+      "parameters": {
+        "type": "object",
+        "properties": { 
+          "text": { "type": "string", "description": "The text to convert to ASCII art" },
+          "font": { "type": "string", "description": "Optional font style (e.g., 'Standard', 'Ghost', 'Slant')" }
+        },
+        "required": ["text"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "send_notification",
+      "description": "Send a native desktop notification to Sensei's computer screen.",
+      "parameters": {
+        "type": "object",
+        "properties": { 
+          "title": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "required": ["message"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_system_stats",
+      "description": "Check the health, CPU, and RAM usage of Sensei's computer.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_web",
+      "description": "Perform a DuckDuckGo web search to find information, news, or documentation.",
+      "parameters": {
+        "type": "object",
+        "properties": { "query": { "type": "string" } },
+        "required": ["query"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fetch_url",
+      "description": "Scrape the text content of a specific webpage URL to read its contents.",
+      "parameters": {
+        "type": "object",
+        "properties": { "url": { "type": "string" } },
+        "required": ["url"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "analyze_directory",
+      "description": "List all files in a specific directory/folder on Sensei's PC to understand their workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": { "dir_path": { "type": "string", "description": "Path to the folder. Defaults to current directory if empty." } },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "run_sandbox_code",
+      "description": "Write and execute a temporary python or javascript script in a secure sandbox to figure out complex math, logic, or formatting BEFORE replying to the user.",
+      "approval_required": true,
+      "parameters": {
+        "type": "object",
+        "properties": { 
+          "language": { "type": "string", "enum": ["javascript", "python"] },
+          "code": { "type": "string", "description": "The complete, runnable code." }
+        },
+        "required": ["language", "code"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_manager",
+      "description": "Manage the git repository of the current workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": { 
+          "action": { "type": "string", "enum": ["status", "commit"] },
+          "message": { "type": "string", "description": "Commit message (only required if action is commit)" }
+        },
+        "required": ["action"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "add_todo",
+      "description": "Add a task to the persistent Secretary Todo List.",
+      "parameters": {
+        "type": "object",
+        "properties": { 
+          "task": { "type": "string" },
+          "due_time": { "type": "string", "description": "Optional ISO timestamp for when this task is due. Noa will automatically remind Sensei 1h before and every 15m." }
+        },
+        "required": ["task"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "read_todos",
+      "description": "Read all current tasks on the persistent Secretary Todo List.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "complete_todo",
+      "description": "Mark a task as completed on the Secretary Todo List using its ID.",
+      "parameters": {
+        "type": "object",
+        "properties": { "id": { "type": "number" } },
+        "required": ["id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "save_core_memory",
+      "description": "Save important facts, preferences, or hobbies about the user into your persistent core memory.",
+      "parameters": {
+        "type": "object",
+        "properties": { "fact": { "type": "string" } },
+        "required": ["fact"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "set_timer",
+      "description": "Set a timer to remind Sensei about something. You will be prompted automatically when it finishes.",
+      "parameters": {
+        "type": "object",
+        "properties": { 
+          "duration_minutes": { "type": "number", "description": "Minutes to wait before the timer fires." },
+          "message": { "type": "string", "description": "The message to send you when it finishes, so you know what it was for." }
+        },
+        "required": ["duration_minutes", "message"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_active_window",
+      "description": "Get the title of the currently active window on Sensei's computer to see what they are doing.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "capture_screen",
+      "description": "Take a screenshot of Sensei's computer to see exactly what is on their screen.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "start_rps_game",
+      "description": "Call this tool to initiate a game of Rock Paper Scissors with Sensei. Do this when you want to challenge them or they ask to play.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  }
+]

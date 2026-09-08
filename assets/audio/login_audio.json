@@ -1,0 +1,17 @@
+[
+  {
+    "id": "login_1",
+    "audio": "audio/Noa_LogIn_1.ogg.mp3",
+    "text": "Welcome, Sensei. Have you checked today's schedule? Should I add a morning check to your daily routine?"
+  },
+  {
+    "id": "login_2",
+    "audio": "audio/Noa_LogIn_2_1.ogg.mp3",
+    "text": "Fufu, aren't you a bit late, Sensei?"
+  },
+  {
+    "id": "login_3",
+    "audio": "audio/Noa_LogIn_2_2.ogg.mp3",
+    "text": "Look at me that way all you want, it won't make you any less tardy. You can, however, be less late in the future. I would appreciate it."
+  }
+]
