@@ -10,3 +10,5 @@ desktop-app/node_modules/
 desktop-app/dist/
 desktop-app/backup-dist/
 test-backend.exe
+*.exe
+desktop-app/src-tauri/noa-backend*
