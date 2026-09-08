@@ -58,9 +58,21 @@ const MESSAGE_HANDLERS = {
     'init_settings': async (data, ws) => {
         await handleSettings(data, ws);
         if (data.apiKey) {
-            const wakeUpPrompt = "*[SYSTEM EVENT] Sensei has booted you up. Please wake up and greet them warmly.*";
-            console.log(pc.whiteBright(`\n[ System Trigger ] ${wakeUpPrompt}`));
-            await handleUserInput(wakeUpPrompt, ws);
+            try {
+                const loginAudioPath = path.join(getAudioDir(), 'login_audio.json');
+                const loginAudioData = JSON.parse(fs.readFileSync(loginAudioPath, 'utf8'));
+                const randomGreeting = loginAudioData[Math.floor(Math.random() * loginAudioData.length)];
+                
+                ws.send(JSON.stringify({ 
+                    type: 'login_greeting', 
+                    text: randomGreeting.text, 
+                    audio: randomGreeting.audio 
+                }));
+                
+                state.addMessage({ role: 'noa', texts: [randomGreeting.text] });
+            } catch (err) {
+                console.error("Failed to load login audio:", err);
+            }
         }
     },
     'approval_response': async (data, ws) => {

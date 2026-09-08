@@ -60,7 +60,7 @@ const WS_HANDLERS = {
     'message': async (data) => {
         addMessage(data.role, data.content);
         if (data.role === 'noa' || data.role === 'assistant') {
-            triggerNotification(data.content);
+            triggerNotification("Noa sent you a message");
         }
     },
     'approval_request': async (data) => {
