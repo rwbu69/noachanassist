@@ -57,8 +57,8 @@
 
 {#if isOpen}
     <div class="overlay" style="display: flex;">
-        <div class="overlay-content settings-modal-content">
-            <div class="settings-header">
+        <div class="modal-content">
+            <div class="modal-header">
                 <h2>[ CONFIGURATION ]</h2>
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -125,7 +125,7 @@
                 </div>
             </div>
             
-            <button id="save-settings" on:click={handleSave}>[ SAVE ]</button>
+            <button class="modal-save-btn" on:click={handleSave}>[ SAVE ]</button>
         </div>
     </div>
 {/if}

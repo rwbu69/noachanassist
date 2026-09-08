@@ -28,13 +28,13 @@
 
 {#if isOpen}
     <div class="overlay" style="display: flex;">
-        <div id="terminal-content">
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div style="text-align:right;">
-                <span style="cursor:pointer; color:#fff; margin: 10px;" on:click={onClose}>[X]</span>
+        <div class="modal-content" style="max-width: 800px; height: 80vh;">
+            <div class="modal-header">
+                <h2>[ BACKEND TERMINAL ]</h2>
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <!-- svelte-ignore a11y-no-static-element-interactions -->
+                <span class="close-btn" on:click={onClose}>[X]</span>
             </div>
-            <h2>Backend Terminal</h2>
             <div id="terminal-log" bind:this={logContainer}>
                 {$terminalLogs}
             </div>
