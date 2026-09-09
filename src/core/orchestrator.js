@@ -25,8 +25,29 @@ export function cancelActiveRequest(requestId) {
     }
 }
 
+// SRP: Heuristic to estimate warmth level from recent messages
+function estimateWarmthLevel(memory) {
+    const recentMessages = memory.slice(-5).filter(m => m.role === 'user').map(m => (typeof m.content === 'string' ? m.content.toLowerCase() : ''));
+    if (recentMessages.length === 0) return 'moderate';
+    
+    const warmKeywords = ['love', 'cute', 'sweet', 'thank you', 'thanks', 'happy', 'smile', 'beautiful', '♡', 'heart', 'dear', 'miss', 'hug', 'warm', 'good girl', 'best'];
+    const coldKeywords = ['stop', 'annoying', 'quiet', 'shut up', 'leave', 'busy', 'no', 'bad', 'don\'t', 'nevermind'];
+    
+    let warmScore = 0;
+    let coldScore = 0;
+    
+    for (const msg of recentMessages) {
+        for (const kw of warmKeywords) if (msg.includes(kw)) warmScore++;
+        for (const kw of coldKeywords) if (msg.includes(kw)) coldScore++;
+    }
+    
+    if (warmScore > coldScore && warmScore > 0) return 'high';
+    if (coldScore > warmScore && coldScore > 0) return 'low';
+    return 'moderate';
+}
+
 // SRP: Helper to build the system prompt context
-async function buildSystemPrompt(userSettings, capabilities, ws) {
+async function buildSystemPrompt(userSettings, capabilities, ws, memory) {
   let activePersona =
     (await loadPersona(capabilities, userSettings)) +
     `\n\n${getCircadianMood()}`;
@@ -53,6 +74,28 @@ async function buildSystemPrompt(userSettings, capabilities, ws) {
 
   const dailyBriefing = `\n\n[SYSTEM EVENT - CURRENT CONTEXT]\nCurrent Date: ${dateString}\nCurrent Time: ${timeString}\nCurrent Weather in ${userSettings.city || "Unknown"}: ${weatherStr}\nPending Tasks:\n${currentTodos}`;
   activePersona += dailyBriefing;
+  
+  const affinity = state.getAffinity();
+  const temperature = state.getTemperature();
+  const warmthLevel = estimateWarmthLevel(memory || []);
+  let minutesSince = Math.round((Date.now() - state.lastInteractionTime) / 60000);
+  if (minutesSince < 0) minutesSince = 0;
+  
+  const relationshipState = `\n\n[RELATIONSHIP STATE]
+Your affinity with Sensei is ${affinity}/100.
+Your current emotional temperature is "${temperature}".
+${affinity > 70 ? "You feel close to Sensei today. You may be more openly affectionate, playful, and physically proximate in your descriptions." : ""}
+${affinity < 30 ? "You feel distant from Sensei. You are more reserved, formal, and less physically expressive. Do not guilt-trip or express abandonment — simply reflect the distance quietly." : ""}
+${temperature === 'touched' ? "Something Sensei said or did genuinely affected you. Let that warmth show in your response, subtly." : ""}
+${temperature === 'anxious' ? "You are feeling a little anxious. You may be slightly more tentative or ask a gentle clarifying question." : ""}
+
+[CURRENT STATE]
+- Time since last interaction: ${minutesSince} minutes
+- Sensei's recent warmth level: ${warmthLevel}
+${warmthLevel === 'high' ? "- Sensei has been warm and affectionate recently. You may match their energy with playful affection. Keep it contextual and never forced." : ""}
+${warmthLevel === 'low' ? "- Sensei has been businesslike or distant recently. Be respectful, warm but not forward, and let them lead on affection." : ""}`;
+  
+  activePersona += relationshipState;
 
   const activeGame = state.getActiveGame();
   if (activeGame) {
@@ -280,7 +323,7 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
   }
 
   const capabilities = state.getCapabilities();
-  let activePersona = await buildSystemPrompt(userSettings, capabilities, ws);
+  let activePersona = await buildSystemPrompt(userSettings, capabilities, ws, memory);
 
   try {
     const queryText =
