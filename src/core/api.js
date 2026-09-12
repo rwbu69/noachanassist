@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const modelCooldowns = new Map();
+const LLM_API_TIMEOUT_MS = 60000;
 let _openai = null;
 
 export function getOpenAI() {
@@ -42,6 +43,8 @@ export async function callAPIWithFallback(messages, toolsObj, models, options = 
   for (let i = 0; i < availableModels.length; i++) {
 
     const model = availableModels[i];
+    let isTimeout = false;
+    let fallbackIsTimeout = false;
     
     if (modelCooldowns.has(model)) {
         modelCooldowns.delete(model);
@@ -74,12 +77,19 @@ export async function callAPIWithFallback(messages, toolsObj, models, options = 
           options.abortSignal.addEventListener('abort', abortListener);
       }
 
+      const timeoutId = setTimeout(() => {
+          isTimeout = true;
+          controller.abort();
+      }, LLM_API_TIMEOUT_MS);
+
       let completion;
       try {
         completion = await client.chat.completions.create(payload, { signal: controller.signal });
       } catch (err) {
         if (abortListener && options.abortSignal) options.abortSignal.removeEventListener('abort', abortListener);
         throw err;
+      } finally {
+        clearTimeout(timeoutId);
       }
       
       if (abortListener && options.abortSignal) options.abortSignal.removeEventListener('abort', abortListener);
@@ -95,6 +105,11 @@ export async function callAPIWithFallback(messages, toolsObj, models, options = 
 
     } catch (err) {
       if (err.name === 'AbortError' || err.message === 'ABORTED' || err.message?.includes('Request was aborted') || err.name === 'APIUserAbortError') {
+          if (isTimeout) {
+              console.log(pc.red(`\n[System] Model ${model} timed out after ${LLM_API_TIMEOUT_MS}ms. Routing to fallback...`));
+              modelCooldowns.set(model, Date.now());
+              continue;
+          }
           if (options.abortSignal?.aborted) {
               throw new Error("USER_CANCELLED");
           }
@@ -125,6 +140,11 @@ export async function callAPIWithFallback(messages, toolsObj, models, options = 
               options.abortSignal.addEventListener('abort', abortListener);
           }
 
+          const fallbackTimeoutId = setTimeout(() => {
+              fallbackIsTimeout = true;
+              controller.abort();
+          }, LLM_API_TIMEOUT_MS);
+
           let completion;
           try {
             completion = await client.chat.completions.create({
@@ -134,6 +154,8 @@ export async function callAPIWithFallback(messages, toolsObj, models, options = 
           } catch (retryErr) {
             if (abortListener && options.abortSignal) options.abortSignal.removeEventListener('abort', abortListener);
             throw retryErr;
+          } finally {
+            clearTimeout(fallbackTimeoutId);
           }
 
           if (abortListener && options.abortSignal) options.abortSignal.removeEventListener('abort', abortListener);
@@ -148,6 +170,11 @@ export async function callAPIWithFallback(messages, toolsObj, models, options = 
 
         } catch (retryErr) {
           if (retryErr.name === 'AbortError' || retryErr.message === 'ABORTED' || retryErr.message?.includes('Request was aborted') || retryErr.name === 'APIUserAbortError') {
+              if (fallbackIsTimeout) {
+                  console.log(pc.red(`\n[System] Fallback model ${model} timed out after ${LLM_API_TIMEOUT_MS}ms. Routing to fallback...`));
+                  modelCooldowns.set(model, Date.now());
+                  continue;
+              }
               if (options.abortSignal?.aborted) throw new Error("USER_CANCELLED");
               modelCooldowns.set(model, Date.now());
               continue;

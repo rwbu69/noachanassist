@@ -90,7 +90,9 @@ async function saveMemoryData() {
 export async function saveVectorMemory(text, role, progressCallback) {
   if (!text || text.trim() === '') return;
   const ext = await initExtractor(progressCallback);
+  const startExt = Date.now();
   const output = await ext(text, { pooling: 'mean', normalize: true });
+  console.log(`[Timing] Vector embedding extraction (save) took ${Date.now() - startExt}ms`);
   const embedding = Array.from(output.data);
   
   const data = await loadMemoryData();
@@ -111,7 +113,9 @@ export async function saveVectorMemory(text, role, progressCallback) {
 
 export async function queryVectorMemory(queryText, topK = 5, progressCallback) {
   const ext = await initExtractor(progressCallback);
+  const startExt = Date.now();
   const output = await ext(queryText, { pooling: 'mean', normalize: true });
+  console.log(`[Timing] Vector embedding extraction (query) took ${Date.now() - startExt}ms`);
   const queryEmbedding = Array.from(output.data);
 
   await loadMemoryData(); // Ensure Orama is loaded

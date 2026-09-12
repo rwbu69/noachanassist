@@ -275,6 +275,12 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
       activeRequests.set(requestId, controller);
   }
 
+  const ORCHESTRATOR_TIMEOUT_MS = 300000;
+  const masterTimeoutId = setTimeout(() => {
+      console.log(pc.red(`\n[System] Orchestrator absolute timeout reached (${ORCHESTRATOR_TIMEOUT_MS}ms). Aborting completely.`));
+      controller.abort(); 
+  }, ORCHESTRATOR_TIMEOUT_MS);
+
   let lastDownloadMsg = 0;
   let hasSentLoading = false;
   
@@ -309,7 +315,9 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
   try {
     const textToSave =
       typeof userInput === "string" ? userInput : "[Image sent to Noa]";
+    const startVecSave = Date.now();
     await saveVectorMemory(textToSave, "user", progressCallback);
+    console.log(pc.gray(`[Timing] Vector memory save (user) took ${Date.now() - startVecSave}ms`));
   } catch (e) {
     console.log(pc.red(`Vector memory error: ${e.message}`));
   }
@@ -319,20 +327,25 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
       if (requestId) activeRequests.delete(requestId);
       memory.pop();
       state.setMemory(memory);
+      clearTimeout(masterTimeoutId);
       return;
   }
 
   const capabilities = state.getCapabilities();
+  const startBuildPrompt = Date.now();
   let activePersona = await buildSystemPrompt(userSettings, capabilities, ws, memory);
+  console.log(pc.gray(`[Timing] Build system prompt took ${Date.now() - startBuildPrompt}ms`));
 
   try {
     const queryText =
       typeof userInput === "string" ? userInput : "What do you see?";
+    const startVecQuery = Date.now();
     const relevantMemories = await queryVectorMemory(
       queryText,
       3,
       progressCallback,
     );
+    console.log(pc.gray(`[Timing] Vector memory query took ${Date.now() - startVecQuery}ms`));
     if (relevantMemories.length > 0) {
       const memoryText = relevantMemories
         .map((m) => `[${m.timestamp}] ${m.role}: ${m.text}`)
@@ -348,6 +361,7 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
       if (requestId) activeRequests.delete(requestId);
       memory.pop();
       state.setMemory(memory);
+      clearTimeout(masterTimeoutId);
       return;
   }
 
@@ -378,6 +392,8 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
 
       if (controller.signal.aborted) throw new Error("USER_CANCELLED");
       
+      const startApiCall = Date.now();
+      console.log(pc.blue(`[System] Sending request to OpenRouter API...`));
       const response = await callAPIWithFallback(
         messages,
         capabilities,
@@ -386,6 +402,7 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
            abortSignal: controller.signal
         }
       );
+      console.log(pc.cyan(`[Timing] API call (LLM response) took ${Date.now() - startApiCall}ms`));
       
       const responseMessage = response.choices[0].message;
 
@@ -395,12 +412,14 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
 
         for (const toolCall of responseMessage.tool_calls) {
           if (controller.signal.aborted) throw new Error("USER_CANCELLED");
+          const startTool = Date.now();
           const toolResult = await handleToolCall(
             toolCall,
             ws,
             capabilities,
             memory,
           );
+          console.log(pc.magenta(`[Timing] Tool call ${toolCall.function.name} took ${Date.now() - startTool}ms`));
           if (controller.signal.aborted) throw new Error("USER_CANCELLED");
           
           if (Array.isArray(toolResult)) {
@@ -430,7 +449,9 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
 
         await saveMemory(memory);
         state.setMemory(memory);
+        const startVecSaveAssist = Date.now();
         await saveVectorMemory(reply, "assistant");
+        console.log(pc.gray(`[Timing] Vector memory save (assistant) took ${Date.now() - startVecSaveAssist}ms`));
         
         if (requestId) activeRequests.delete(requestId);
         break;
@@ -462,4 +483,5 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
       break;
     }
   }
+  clearTimeout(masterTimeoutId);
 }
