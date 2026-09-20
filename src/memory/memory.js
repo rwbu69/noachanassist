@@ -34,27 +34,44 @@ export async function loadSettings() {
     city: '', 
     exp: 0, 
     level: 1,
-    models: [
-      'nvidia/nemotron-3-ultra-550b-a55b:free',
-      'nvidia/nemotron-3.5-lightning:free',
-      'nvidia/nemotron-3-super-120b-a12b:free',
-      'thinkingmachines/inkling:free',
-      'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
+    proxies: [
+      {
+        id: "default-openrouter",
+        name: "OpenRouter (Default)",
+        proxyUrl: "https://openrouter.ai/api/v1",
+        apiKey: process.env.OPENROUTER_API_KEY || "",
+        model: "openrouter/free",
+        customPrompt: "",
+        isActive: true
+      }
     ],
-    maxContextTokens: 8000
+    maxContextTokens: 8000,
+    elevenLabsApiKey: "",
+    elevenLabsVoiceId: "",
+    enableVoice: false
   };
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
         const loaded = JSON.parse(await fs.promises.readFile(SETTINGS_FILE, 'utf8'));
-        if (loaded.models) {
-          if (Array.isArray(loaded.models)) {
-            loaded.models = loaded.models
-              .filter((model) => typeof model === 'string')
-              .map((model) => model.trim())
-              .filter(Boolean);
-          }
-          if (!Array.isArray(loaded.models) || loaded.models.length === 0) {
-            delete loaded.models; // Fallback to defaults if invalid
+        
+        if (loaded.models && !loaded.proxies) {
+           loaded.proxies = [
+             {
+               id: "default-openrouter",
+               name: "OpenRouter (Migrated)",
+               proxyUrl: "https://openrouter.ai/api/v1",
+               apiKey: process.env.OPENROUTER_API_KEY || "",
+               model: loaded.models[0] || "openrouter/free",
+               customPrompt: "",
+               isActive: true
+             }
+           ];
+           delete loaded.models;
+        }
+
+        if (loaded.proxies) {
+          if (!Array.isArray(loaded.proxies) || loaded.proxies.length === 0) {
+            delete loaded.proxies; 
           }
         }
         settings = { ...settings, ...loaded };
@@ -81,7 +98,13 @@ export async function loadLongTermMemory() {
 export function formatMemoryForSummarizer(memory) {
   return memory
     .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => `${m.role === 'assistant' ? 'Noa' : 'Sensei'}: ${m.content}`)
+    .map(m => {
+      let contentStr = '';
+      if (typeof m.content === 'string') contentStr = m.content;
+      else if (Array.isArray(m.content)) contentStr = '[Image or Complex Content]';
+      else if (m.tool_calls) contentStr = '[Used Tool]';
+      return `${m.role === 'assistant' ? 'Noa' : 'Sensei'}: ${contentStr}`;
+    })
     .join('\n');
 }
 
@@ -102,12 +125,12 @@ export async function summarizeAndArchive(memory) {
   ];
 
   const settings = await loadSettings();
-  const fallbackModel = (settings.models && settings.models.length > 0) ? settings.models[0] : 'openrouter/free';
+  const activeProxy = settings.proxies?.find(p => p.isActive) || settings.proxies?.[0];
 
   try {
-      const client = getOpenAI();
+      const client = getOpenAI(activeProxy.proxyUrl, activeProxy.apiKey);
       const response = await client.chat.completions.create({
-          model: fallbackModel,
+          model: activeProxy.model,
           messages: summaryPrompt
       });
       const facts = response.choices[0].message.content;

@@ -41,6 +41,8 @@ console.log(pc.cyanBright("[ System ] Booting Noa-chan Backend Server..."));
 
 await state.init();
 
+
+
 const capabilities = loadCapabilities();
 if (capabilities.length === 0) {
   console.log(pc.red("[ Error ] Missing capabilities.json!"));

@@ -43,6 +43,7 @@ toolEvents.on("sync_todos", async () => {
         todos: tools.get_all_todos_raw(),
         level: settings.level || 1,
         exp: settings.exp || 0,
+        proxies: settings.proxies || []
       }),
     );
   }
@@ -68,7 +69,10 @@ toolEvents.on("start_rps", () => {
 const MESSAGE_HANDLERS = {
   init: async (data, ws) => {
     await handleSettings(data, ws);
-    if (data.apiKey && !hasSentLoginGreeting) {
+    const hasProxy = data.proxies && data.proxies.some(p => p.apiKey);
+    const isConfigured = data.apiKey || hasProxy;
+    
+    if (isConfigured && !hasSentLoginGreeting) {
       try {
         const loginAudioPath = path.join(getAudioDir(), "login_audio.json");
         const loginAudioData = JSON.parse(
@@ -200,8 +204,10 @@ async function handleSettings(data, ws) {
   }
   if (data.proactiveInterval !== undefined)
     currentSettings.proactiveInterval = data.proactiveInterval;
-  if (data.models && Array.isArray(data.models) && data.models.length > 0)
-    currentSettings.models = data.models;
+
+  if (data.proxies && Array.isArray(data.proxies) && data.proxies.length > 0) {
+    currentSettings.proxies = data.proxies;
+  }
   await saveSettings(currentSettings);
 
   if (
@@ -282,7 +288,7 @@ async function handleSettings(data, ws) {
       todos: tools.get_all_todos_raw(),
       level: s.level || 1,
       exp: s.exp || 0,
-      models: s.models || [],
+      proxies: s.proxies || []
     }),
   );
 }
@@ -356,6 +362,7 @@ export function startServer() {
             resolve("DISCONNECTED");
         }
         pendingApprovals.clear();
+        hasSentLoginGreeting = false;
 
         setTimeout(() => {
           if (!state.getWs()) {

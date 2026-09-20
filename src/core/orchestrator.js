@@ -15,6 +15,7 @@ import * as tools from "../tools/tools.js";
 import { state } from "./state.js";
 import { sendToFrontend, pendingApprovals } from "../system/server.js";
 import { handleCommand } from "../tools/commands.js";
+import { generateSpeech } from "../system/tts.js";
 
 export const activeRequests = new Map();
 
@@ -234,11 +235,12 @@ async function enforceContextLimits(memory, maxTokens) {
   const charsPerToken = 4;
   const maxChars = maxTokens * charsPerToken;
   let totalChars = memory.reduce(
-    (sum, m) =>
-      sum +
-      (typeof m.content === "string"
+    (sum, m) => {
+      if (m.content === undefined || m.content === null) return sum;
+      return sum + (typeof m.content === "string"
         ? m.content.length
-        : JSON.stringify(m.content).length),
+        : JSON.stringify(m.content).length);
+    },
     0,
   );
 
@@ -287,7 +289,7 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
   const progressCallback = (info) => {
     if (info.status === "init" || info.status === "download") {
       if (!hasSentLoading) {
-        sendToFrontend(ws, "system", "Loading AI Brain...");
+        sendToFrontend(ws, "toast", "Loading AI Brain...");
         hasSentLoading = true;
       }
       console.log(pc.dim(`[ Vector Engine ] Downloading ${info.file || "weights"}...`));
@@ -386,18 +388,20 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
 
     try {
       let messages = [{ role: "system", content: activePersona }, ...memory];
-      const models = userSettings.models || ["openrouter/free"];
+      const activeProxy = userSettings.proxies?.find(p => p.isActive) || userSettings.proxies?.[0];
       
-      sendToFrontend(ws, "system", "Noa-chan is thinking...");
-
+      if (!activeProxy) {
+          throw new Error("No active proxy configured in settings.");
+      }
+      
       if (controller.signal.aborted) throw new Error("USER_CANCELLED");
       
       const startApiCall = Date.now();
-      console.log(pc.blue(`[System] Sending request to OpenRouter API...`));
+      console.log(pc.blue(`[System] Sending request to inference API (${activeProxy.model})...`));
       const response = await callAPIWithFallback(
         messages,
         capabilities,
-        models,
+        activeProxy,
         {
            abortSignal: controller.signal
         }
@@ -407,7 +411,6 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
       const responseMessage = response.choices[0].message;
 
       if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-        sendToFrontend(ws, "system", "Noa-chan is checking her tools...");
         memory.push(responseMessage);
 
         for (const toolCall of responseMessage.tool_calls) {
@@ -443,7 +446,16 @@ export async function handleUserInput(userInput, ws, isSystemTrigger = false, re
 
         if (controller.signal.aborted) throw new Error("USER_CANCELLED");
 
-        sendToFrontend(ws, "noa", { content: reply, requestId });
+        let audioPath = null;
+        if (userSettings.enableVoice && userSettings.elevenLabsApiKey) {
+            audioPath = await generateSpeech(reply, requestId, userSettings.elevenLabsApiKey, userSettings.elevenLabsVoiceId);
+        }
+
+        sendToFrontend(ws, "noa", { 
+          content: reply, 
+          requestId,
+          audio: audioPath 
+        });
         
         memory.push({ role: "assistant", content: reply });
 

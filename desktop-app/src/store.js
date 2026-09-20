@@ -16,6 +16,7 @@ export const isRpsMode = writable(false);
 
 export const isGenerating = writable(false);
 export const activeRequestId = writable(null);
+export const activeToast = writable(null);
 
 const getBool = (key, defaultVal) => {
     const v = localStorage.getItem(key);
@@ -32,13 +33,26 @@ export const settings = writable({
     hideTray: getBool('noa_hideTray', false),
     proactiveMode: getBool('noa_proactive', true),
     proactiveInterval: parseInt(localStorage.getItem('noa_proactiveInterval')) || 5,
-    notificationSound: getBool('noa_notificationSound', true)
+    notificationSound: getBool('noa_notificationSound', true),
+    elevenLabsApiKey: localStorage.getItem('noa_elevenLabsApiKey') || '',
+    elevenLabsVoiceId: localStorage.getItem('noa_elevenLabsVoiceId') || '',
+    enableVoice: getBool('noa_enableVoice', false)
 });
 
 export const ws = writable(null);
 let wsInstance = null;
 let reconnectTimer = null;
 let hasSentSettings = false;
+let toastTimeout = null;
+
+export function showToast(msg) {
+    activeToast.set(msg);
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+        activeToast.set(null);
+        toastTimeout = null;
+    }, 3000);
+}
 
 let backendPort = null;
 let backendToken = null;
@@ -48,13 +62,24 @@ listen('backend-ready', (event) => {
     backendToken = event.payload.token;
 });
 
+function getFormattedTime() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    return `${hours}:${minutes} | ${day}-${month}-${year}`;
+}
+
 export function addMessage(role, content) {
+    const time = getFormattedTime();
     messages.update(m => {
         if (m.length > 0 && (role === 'user' || role === 'noa') && m[m.length - 1].role === role) {
             const last = m[m.length - 1];
-            return [...m.slice(0, -1), { role, texts: [...last.texts, content] }];
+            return [...m.slice(0, -1), { role, texts: [...last.texts, { text: content, time }] }];
         } else {
-            return [...m, { role, texts: [content] }];
+            return [...m, { role, texts: [{ text: content, time }] }];
         }
     });
 }
@@ -84,6 +109,10 @@ const WS_HANDLERS = {
         addMessage(data.role, data.content);
         if (isAssistantMessage) {
             triggerNotification("Noa sent you a message");
+            if (data.audio) {
+                const audio = new Audio(`http://127.0.0.1:${backendPort}/${data.audio}?token=${backendToken}`);
+                audio.play().catch(e => console.error("Audio play failed:", e));
+            }
         }
     },
     'approval_request': async (data) => {
@@ -107,15 +136,19 @@ const WS_HANDLERS = {
     'system': async (data) => {
         addMessage('system', data.message);
     },
+    'toast': (data) => {
+        showToast(data.message || data.content);
+    },
     'clear': () => messages.set([]),
     'core_memory_data': (data) => coreMemories.set(data.content),
     'sync_todos': (data) => {
         todos.set(data.todos);
         if (data.level !== undefined) userLevel.set(data.level);
         if (data.exp !== undefined) userExp.set(data.exp);
-        if (data.models !== undefined) {
-            settings.update(s => ({ ...s, models: data.models }));
-        }
+        settings.update(s => ({
+            ...s, 
+            ...(data.proxies !== undefined && { proxies: data.proxies })
+        }));
     },
     'start_rps': () => isRpsMode.set(true),
     'rps_reveal': (data) => {
@@ -178,7 +211,7 @@ export async function connectWebSocket() {
         isConnected.set(true);
         ws.set(wsInstance);
         
-        addMessage('system', 'Connected to Noa-chan Backend Server.');
+        showToast('Connected to Noa-chan Backend Server.');
         
         settings.subscribe(s => {
             if (wsInstance && wsInstance.readyState === WebSocket.OPEN && !hasSentSettings) {
@@ -203,13 +236,9 @@ export async function connectWebSocket() {
         isConnected.set(false);
         ws.set(null);
         hasSentSettings = false;
-        messages.update(m => {
-            if (m.length > 0) {
-                const last = m[m.length-1];
-                if (last.role === 'system' && last.texts[0] === 'Waiting for backend connection...') return m;
-            }
-            return [...m, { role: 'system', texts: ['Waiting for backend connection...'] }];
-        });
+        
+        activeToast.set('Waiting for backend connection...');
+        
         clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(connectWebSocket, 1000);
     };

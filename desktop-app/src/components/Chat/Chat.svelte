@@ -111,8 +111,10 @@
         {#each $messages as group}
             {#if group.role === 'system' || group.role === 'tool'}
                 <div class="message-group {group.role}">
-                    {#each group.texts as text}
-                        <div class="bubble">{@html parseMarkdown(text)}</div>
+                    {#each group.texts as item}
+                        <div class="message-content">
+                            <div class="bubble">{@html parseMarkdown(item.text)}</div>
+                        </div>
                     {/each}
                 </div>
             {:else}
@@ -120,8 +122,13 @@
                     <div class="avatar"></div>
                     <div class="bubbles-container">
                         <div class="sender-name">{group.role === 'noa' ? 'Noa' : 'Sensei'}</div>
-                        {#each group.texts as text}
-                            <div class="bubble">{@html parseMarkdown(text)}</div>
+                        {#each group.texts as item}
+                            <div class="message-content">
+                                <div class="bubble">{@html parseMarkdown(item.text)}</div>
+                                {#if item.time}
+                                    <div class="message-time">{item.time}</div>
+                                {/if}
+                            </div>
                         {/each}
                     </div>
                 </div>
@@ -180,6 +187,20 @@
         margin-top: 5px;
         margin-left: 5px;
         animation: pulse 1.5s infinite;
+    }
+
+    .message-content {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 5px;
+    }
+
+    .message-time {
+        font-size: 10px;
+        color: var(--dim-color);
+        margin-top: 2px;
+        margin-left: 5px;
+        opacity: 0.7;
     }
 
     .stop-btn {
