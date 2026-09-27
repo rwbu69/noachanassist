@@ -12,3 +12,6 @@ desktop-app/backup-dist/
 test-backend.exe
 *.exe
 desktop-app/src-tauri/noa-backend*
+
+NOA_PERSONA_ENHANCEMENT.md
+persona_enhancement_guide.md
